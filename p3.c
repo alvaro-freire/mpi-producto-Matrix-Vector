@@ -3,8 +3,7 @@
 #include <mpi.h>
 
 #define DEBUG 1
-
-#define N 1024
+#define N 8
 
 int main(int argc, char *argv[]) {
     int i, j;
@@ -31,31 +30,58 @@ int main(int argc, char *argv[]) {
                 matrix[i][j] = i + j;
             }
         }
-
-
     }
 
     gettimeofday(&tv1, NULL);
 
-    for (i = 0; i < N; i++) {
-        result[i] = 0;
+    double local_result[m];
+    double local_matrix[N][N];
+
+    MPI_Scatter(matrix, N * m, MPI_DOUBLE, local_matrix, N * m, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(vector, N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+    for (i = 0; i < m; i++) {
+        local_result[i] = 0;
         for (j = 0; j < N; j++) {
-            result[i] += matrix[i][j] * vector[j];
+            local_result[i] += local_matrix[i][j] * vector[j];
         }
     }
+
+    MPI_Gather(local_result, m, MPI_DOUBLE, result, m, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     gettimeofday(&tv2, NULL);
 
     int microseconds = (tv2.tv_usec - tv1.tv_usec) + 1000000 * (tv2.tv_sec - tv1.tv_sec);
 
-    /*Display result */
+    /*Display result
     if (DEBUG) {
         for (i = 0; i < N; i++) {
             printf(" %f \t ", result[i]);
         }
     } else {
         printf("Time (seconds) = %lf\n", (double) microseconds / 1E6);
+    }*/
+
+    if (rank == 0) {
+        printf("Matrix  :\n");
+        for (i = 0; i < N; i++) {
+            for (j = 0; j < N; j++)
+                printf("%.5f ", matrix[i][j]);
+            printf("\n");
+        }
+
+        printf("Vector :\n");
+        for (i = 0; i < N; i++)
+            printf("%.5f ", vector[i]);
+        printf("\n\n");
+
+        printf("Result :\n");
+        for (i = 0; i < N; i++)
+            printf("%.5f ", result[i]);
+        printf("\n\n");
     }
+
+    MPI_Finalize();
 
     return 0;
 }
