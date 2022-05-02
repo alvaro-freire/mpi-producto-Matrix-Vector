@@ -11,7 +11,7 @@ int main(int argc, char *argv[]) {
     int i, j;
     struct timeval tc1, tc2, tm1, tm2;
 
-    // variables for MPI
+    /* variables for MPI */
     int n_procs, rank;
     double total_pi;
 
@@ -29,8 +29,6 @@ int main(int argc, char *argv[]) {
     double matrix[N][N];
     double vector[N];
     double result[N];
-    double *localresult;
-    double localmatrix[N][N];
 
     if (rank == 0) {
         /* Initialize Matrix and Vector */
@@ -59,13 +57,10 @@ int main(int argc, char *argv[]) {
         sum += sendcounts[i];
     }
 
+    /* local variables */
     int localrows = sendcounts[rank] / N;
-
-    /* local memory allocation */
-    localresult = malloc(sizeof(double) * localrows);
-    // localmatrix = malloc(sizeof(double*) * localrows);
-    // for (i = 0; i < localrows; i++)
-    //     localmatrix[i] = (double *) malloc(sizeof(double) * N);
+    double localresult[localrows];
+    double localmatrix[localrows][N];
 
     /* divide the data among processes as described by sendcounts and displs */
     MPI_Scatterv(matrix, sendcounts, displs, MPI_DOUBLE, localmatrix, sendcounts[rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
@@ -88,7 +83,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* return the calculated data to root process as described by recvcounts and displs */
-    MPI_Gatherv(localresult, localrows, MPI_DOUBLE, &result, recvcounts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Gatherv(&localresult, localrows, MPI_DOUBLE, &result, recvcounts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     /* measuring computation time */
     gettimeofday(&tc2, NULL);
@@ -130,11 +125,6 @@ int main(int argc, char *argv[]) {
             printf("%.2f ", result[i]);
         printf("]\n\n");
     }
-
-    free(localresult);
-    //for (i = 0; i < localrows; i++)
-    //    free(localmatrix[i]);
-    //free(localmatrix);
 
     MPI_Finalize();
 
