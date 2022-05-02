@@ -4,12 +4,15 @@
 #include <sys/time.h>
 #include <mpi.h>
 
-#define DEBUG 0
+#define DEBUG 1
 #define N 6
 
 int main(int argc, char *argv[]) {
     int i, j;
-    struct timeval tc1, tc2, tm1, tm2;
+    struct timeval  tc1, tc2;
+    struct timeval  tm1_s, tm2_s,
+                    tm1_g, tm2_g,
+                    tm1_b, tm2_b;
 
     /* variables for MPI */
     int n_procs, rank;
@@ -40,9 +43,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    /* measuring computation time */
-    gettimeofday(&tc1, NULL);
-
     /* calculate send counts and displacements */
     sum = 0;
     for (int i = 0; i < n_procs; i++) {
@@ -62,16 +62,48 @@ int main(int argc, char *argv[]) {
     double localresult[localrows];
     double localmatrix[localrows][N];
 
+    /* measuring communication time */
+    gettimeofday(&tm1_s, NULL);
     /* divide the data among processes as described by sendcounts and displs */
     MPI_Scatterv(matrix, sendcounts, displs, MPI_DOUBLE, localmatrix, sendcounts[rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&vector, N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    /* measuring communication time */
+    gettimeofday(&tm2_s, NULL);
 
+    /* measuring communication time */
+    gettimeofday(&tm1_b, NULL);
+    /* divide the vector data among processes */
+    MPI_Bcast(&vector, N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    /* measuring communication time */
+    gettimeofday(&tm2_b, NULL);
+
+    /* measuring computation time */
+    gettimeofday(&tc1, NULL);
     /* operations */
     for (i = 0; i < localrows; i++) {
         localresult[i] = 0;
         for (j = 0; j < N; j++) {
             localresult[i] += localmatrix[i][j] * vector[j];
         }
+    }
+    /* measuring computation time */
+    gettimeofday(&tc2, NULL);
+
+    if (DEBUG) {
+        /* local matrix */
+        printf("Local matrix(%d)\n", rank);
+        for (i = 0; i < localrows; i++) {
+            printf("[ ");
+            for (j = 0; j < N; j++)
+                printf("%.2f ", localmatrix[i][j]);
+            printf("]\n");
+        }
+        printf("\n");
+
+        /* local result */
+        printf("Local result(%d)\n[ ", rank);
+        for (i = 0; i < localrows; i++)
+            printf("%.2f ", localresult[i]);
+        printf("]\n\n");
     }
 
     /* calculate receive counts and displacements */
@@ -82,48 +114,50 @@ int main(int argc, char *argv[]) {
         sum += sendcounts[i] / N;
     }
 
+    /* measuring communication time */
+    gettimeofday(&tm1_g, NULL);
     /* return the calculated data to root process as described by recvcounts and displs */
     MPI_Gatherv(&localresult, localrows, MPI_DOUBLE, &result, recvcounts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    /* measuring communication time */
+    gettimeofday(&tm2_g, NULL);
 
-    /* measuring computation time */
-    gettimeofday(&tc2, NULL);
-
-    int microseconds = (tc2.tv_usec - tc1.tv_usec) + 1000000 * (tc2.tv_sec - tc1.tv_sec);
+    int comptime = (tc2.tv_usec - tc1.tv_usec) + 1000000 * (tc2.tv_sec - tc1.tv_sec);
+    int commtime_s = (tm2_s.tv_usec - tm1_s.tv_usec) + 1000000 * (tm2_s.tv_sec - tm1_s.tv_sec);
+    int commtime_b = (tm2_b.tv_usec - tm1_b.tv_usec) + 1000000 * (tm2_b.tv_sec - tm1_b.tv_sec);
+    int commtime_g = (tm2_g.tv_usec - tm1_g.tv_usec) + 1000000 * (tm2_g.tv_sec - tm1_g.tv_sec);
 
     /* Display result */
     if (DEBUG) {
-        for (i = 0; i < N; i++) {
-            printf(" %.2f \t ", result[i]);
+        if (rank == 0) {
+
+            /* matrix */
+            printf("Matrix\n");
+            for (i = 0; i < N; i++) {
+                printf("[ ");
+                for (j = 0; j < N; j++)
+                    printf("%.2f ", matrix[i][j]);
+                printf("]\n");
+            }
+            printf("\n");
+
+            /* vector */
+            printf("Vector\n[ ");
+            for (i = 0; i < N; i++)
+                printf("%.2f ", vector[i]);
+            printf("]\n\n");
+
+            /* result */
+            printf("Result\n[ ");
+            for (i = 0; i < N; i++)
+                printf("%.2f ", result[i]);
+            printf("]\n\n");
+            printf("\n");
         }
-        printf("\n");
     } else {
-        printf("Computation time of process %d (seconds) = %lf\n", rank, (double) microseconds / 1E6);
-    }
-
-    if (rank == 0) {
-        sleep(1);
-
-        /* matrix */
-        printf("Matrix\n");
-        for (i = 0; i < N; i++) {
-            printf("[ ");
-            for (j = 0; j < N; j++)
-                printf("%.2f ", matrix[i][j]);
-            printf("]\n");
-        }
-        printf("\n");
-
-        /* vector */
-        printf("Vector\n[ ");
-        for (i = 0; i < N; i++)
-            printf("%.2f ", vector[i]);
-        printf("]\n\n");
-
-        /* result */
-        printf("Result\n[ ");
-        for (i = 0; i < N; i++)
-            printf("%.2f ", result[i]);
-        printf("]\n\n");
+        printf("Process %d - Computation time(seconds) = %lf\n", rank, (double) comptime / 1E6);
+        printf("Process %d - Communication time(scatter) = %lf\n", rank, (double) commtime_s / 1E6);
+        printf("Process %d - Communication time(bcast) = %lf\n", rank, (double) commtime_b / 1E6);
+        printf("Process %d - Communication time(gather) = %lf\n", rank, (double) commtime_g / 1E6);
     }
 
     MPI_Finalize();
