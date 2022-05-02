@@ -1,16 +1,15 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <sys/time.h>
 #include <mpi.h>
 
-#define DEBUG 1
-#define N 8
+#define DEBUG 0
+#define N 6
 
 int main(int argc, char *argv[]) {
     int i, j;
-    float matrix[N][N];
-    float vector[N];
-    float result[N];
-    struct timeval tv1, tv2;
+    struct timeval tc1, tc2, tm1, tm2;
 
     // variables for MPI
     int n_procs, rank;
@@ -21,6 +20,17 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     int m = N / n_procs;
+    int sendcounts[n_procs];    // array describing how many elements to send to each process
+    int recvcounts[n_procs];    // array describing how many elements receiving from each process
+    int displs[n_procs];        // array describing the displacements where each segment begins
+    int rem = N % n_procs;      // elements remaining after division among processes
+    int sum;                    // Sum of counts. Used to calculate displacements
+
+    double matrix[N][N];
+    double vector[N];
+    double result[N];
+    double *localresult;
+    double localmatrix[N][N];
 
     if (rank == 0) {
         /* Initialize Matrix and Vector */
@@ -32,54 +42,99 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    gettimeofday(&tv1, NULL);
+    /* measuring computation time */
+    gettimeofday(&tc1, NULL);
 
-    double local_result[m];
-    double local_matrix[N][N];
+    /* calculate send counts and displacements */
+    sum = 0;
+    for (int i = 0; i < n_procs; i++) {
+        sendcounts[i] = 0;
+        if (rem) {
+            sendcounts[i]++;
+            rem--;
+        }
+        sendcounts[i] = (N / n_procs + sendcounts[i]) * N;
 
-    MPI_Scatter(matrix, N * m, MPI_DOUBLE, local_matrix, N * m, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Bcast(vector, N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        displs[i] = sum;
+        sum += sendcounts[i];
+    }
 
-    for (i = 0; i < m; i++) {
-        local_result[i] = 0;
+    int localrows = sendcounts[rank] / N;
+
+    /* local memory allocation */
+    localresult = malloc(sizeof(double) * localrows);
+    // localmatrix = malloc(sizeof(double*) * localrows);
+    // for (i = 0; i < localrows; i++)
+    //     localmatrix[i] = (double *) malloc(sizeof(double) * N);
+
+    /* divide the data among processes as described by sendcounts and displs */
+    MPI_Scatterv(matrix, sendcounts, displs, MPI_DOUBLE, localmatrix, sendcounts[rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&vector, N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+    /* operations */
+    for (i = 0; i < localrows; i++) {
+        localresult[i] = 0;
         for (j = 0; j < N; j++) {
-            local_result[i] += local_matrix[i][j] * vector[j];
+            localresult[i] += localmatrix[i][j] * vector[j];
         }
     }
 
-    MPI_Gather(local_result, m, MPI_DOUBLE, result, m, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    /* calculate receive counts and displacements */
+    sum = 0;
+    for (i = 0; i < n_procs; i++) {
+        recvcounts[i] = sendcounts[i] / N;
+        displs[i] = sum;
+        sum += sendcounts[i] / N;
+    }
 
-    gettimeofday(&tv2, NULL);
+    /* return the calculated data to root process as described by recvcounts and displs */
+    MPI_Gatherv(localresult, localrows, MPI_DOUBLE, &result, recvcounts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
-    int microseconds = (tv2.tv_usec - tv1.tv_usec) + 1000000 * (tv2.tv_sec - tv1.tv_sec);
+    /* measuring computation time */
+    gettimeofday(&tc2, NULL);
 
-    /*Display result
+    int microseconds = (tc2.tv_usec - tc1.tv_usec) + 1000000 * (tc2.tv_sec - tc1.tv_sec);
+
+    /* Display result */
     if (DEBUG) {
         for (i = 0; i < N; i++) {
-            printf(" %f \t ", result[i]);
+            printf(" %.2f \t ", result[i]);
         }
+        printf("\n");
     } else {
-        printf("Time (seconds) = %lf\n", (double) microseconds / 1E6);
-    }*/
+        printf("Computation time of process %d (seconds) = %lf\n", rank, (double) microseconds / 1E6);
+    }
 
     if (rank == 0) {
-        printf("Matrix  :\n");
+        sleep(1);
+
+        /* matrix */
+        printf("Matrix\n");
         for (i = 0; i < N; i++) {
+            printf("[ ");
             for (j = 0; j < N; j++)
-                printf("%.5f ", matrix[i][j]);
-            printf("\n");
+                printf("%.2f ", matrix[i][j]);
+            printf("]\n");
         }
+        printf("\n");
 
-        printf("Vector :\n");
+        /* vector */
+        printf("Vector\n[ ");
         for (i = 0; i < N; i++)
-            printf("%.5f ", vector[i]);
-        printf("\n\n");
+            printf("%.2f ", vector[i]);
+        printf("]\n\n");
 
-        printf("Result :\n");
+        /* result */
+        printf("Result\n[ ");
         for (i = 0; i < N; i++)
-            printf("%.5f ", result[i]);
-        printf("\n\n");
+            printf("%.2f ", result[i]);
+        printf("]\n\n");
     }
+
+    free(localresult);
+    //for (i = 0; i < localrows; i++)
+    //    free(localmatrix[i]);
+    //free(localmatrix);
 
     MPI_Finalize();
 
