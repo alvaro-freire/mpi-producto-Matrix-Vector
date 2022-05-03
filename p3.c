@@ -22,7 +22,6 @@ int main(int argc, char *argv[]) {
     MPI_Comm_size(MPI_COMM_WORLD, &n_procs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    int m = N / n_procs;
     int sendcounts[n_procs];    // array describing how many elements to send to each process
     int recvcounts[n_procs];    // array describing how many elements receiving from each process
     int displs[n_procs];        // array describing the displacements where each segment begins
@@ -111,7 +110,7 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < n_procs; i++) {
         recvcounts[i] = sendcounts[i] / N;
         displs[i] = sum;
-        sum += sendcounts[i] / N;
+        sum += recvcounts[i];
     }
 
     /* measuring communication time */
@@ -125,6 +124,7 @@ int main(int argc, char *argv[]) {
     int commtime_s = (tm2_s.tv_usec - tm1_s.tv_usec) + 1000000 * (tm2_s.tv_sec - tm1_s.tv_sec);
     int commtime_b = (tm2_b.tv_usec - tm1_b.tv_usec) + 1000000 * (tm2_b.tv_sec - tm1_b.tv_sec);
     int commtime_g = (tm2_g.tv_usec - tm1_g.tv_usec) + 1000000 * (tm2_g.tv_sec - tm1_g.tv_sec);
+    int commtime = (commtime_s + commtime_b + commtime_g) / 3;
 
     /* Display result */
     if (DEBUG) {
@@ -154,10 +154,11 @@ int main(int argc, char *argv[]) {
             printf("\n");
         }
     } else {
-        printf("Process %d - Computation time(seconds) = %lf\n", rank, (double) comptime / 1E6);
-        printf("Process %d - Communication time(scatter) = %lf\n", rank, (double) commtime_s / 1E6);
-        printf("Process %d - Communication time(bcast) = %lf\n", rank, (double) commtime_b / 1E6);
-        printf("Process %d - Communication time(gather) = %lf\n", rank, (double) commtime_g / 1E6);
+        printf("Process %d - Computation time(useconds) = %.2lf\n", rank, (double) comptime);
+        //printf("Process %d - Communication time(scatter) = %.2lf\n", rank, (double) commtime_s);
+        //printf("Process %d - Communication time(bcast) = %.2lf\n", rank, (double) commtime_b);
+        //printf("Process %d - Communication time(gather) = %.2lf\n", rank, (double) commtime_g);
+        printf("Process %d - Communication time(useconds) = %.2lf\n", rank, (double) commtime);
     }
 
     MPI_Finalize();
