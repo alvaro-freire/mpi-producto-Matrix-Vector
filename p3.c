@@ -129,6 +129,7 @@ int main(int argc, char *argv[]) {
     /* Display result */
     if (DEBUG) {
         if (rank == 0) {
+            sleep(1);
 
             /* matrix */
             printf("Matrix\n");
