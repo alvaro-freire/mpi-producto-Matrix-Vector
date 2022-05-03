@@ -128,8 +128,8 @@ int main(int argc, char *argv[]) {
 
     /* Display result */
     if (DEBUG) {
+        MPI_Barrier(MPI_COMM_WORLD);
         if (rank == 0) {
-            sleep(1);
 
             /* matrix */
             printf("Matrix\n");
