@@ -105,6 +105,9 @@ int main(int argc, char *argv[]) {
         printf("]\n\n");
     }
 
+    /* printf delay */
+    MPI_Barrier(MPI_COMM_WORLD);
+
     /* calculate receive counts and displacements */
     sum = 0;
     for (i = 0; i < n_procs; i++) {
@@ -128,7 +131,6 @@ int main(int argc, char *argv[]) {
 
     /* Display result */
     if (DEBUG) {
-        MPI_Barrier(MPI_COMM_WORLD);
         if (rank == 0) {
 
             /* matrix */
